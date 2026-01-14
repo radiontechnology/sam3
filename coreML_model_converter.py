@@ -147,8 +147,6 @@ class SAM3ImageEncoderWrapper(nn.Module):
         return fpn_feats[0], fpn_feats[1], fpn_feats[2], \
                pos_enc[0], pos_enc[1], pos_enc[2]
 
-
-
 # ==========================================
 # WRAPPER 2: MASK DECODER
 # ==========================================
@@ -250,7 +248,6 @@ class SAM3DecoderWrapper(nn.Module):
         # --- KEY FIX START ---
         low_res_masks = out["pred_masks"] # Typically 256x256
         scores = out["pred_logits"]       # Shape: (B, Queries) or (B, Queries, 1)
-        print("scores", scores[:5])
         # Interpolate to target size (1008x1008)
         # Using bilinear for smooth mask edges
         upscaled_masks = F.interpolate(
@@ -320,7 +317,7 @@ class SAM3TextEncoderCoreML(nn.Module):
 # ==========================================
 # EXECUTION: EXPORT SCRIPT
 # ==========================================
-print("\n--- Converting Text Encoder (Corrected) ---")
+print("\n--- Converting Text Encoder ---")
 
 try:
     # 1. Initialize Wrapper
@@ -392,53 +389,8 @@ print("Saved SAM3_Encoder.mlpackage")
 # ==========================================
 # EXECUTION: DECODER
 # ==========================================
-print("\n--- Converting Mask Decoder (Fix) ---")
 
-# 1. Get dummy outputs from encoder (Same as before)
-with torch.no_grad():
-    outs = encoder_wrapper(dummy_image)
-    fpn0, fpn1, fpn2, pos0, pos1, pos2 = outs
-
-# 2. Create Dummy Prompts (CRITICAL: Must be non-empty for Trace)
-# Points
-dummy_points = torch.tensor([[[500.0, 500.0]]], dtype=torch.float64) # (1, 1, 2)
-dummy_labels = torch.tensor([[1]], dtype=torch.long) # (1, 1)
-
-# Boxes (Adding 1 dummy box to satisfy the Tracer)
-dummy_boxes = torch.tensor([[[0.0, 0.0, 10.0, 10.0]]], dtype=torch.float64) # (1, 1, 4)
-dummy_box_labels = torch.tensor([[1]], dtype=torch.int64) # (1, 1)
-
-decoder_wrapper = SAM3DecoderWrapper(full_model)
-decoder_wrapper.eval()
-
-# Dummy Data (Must have shape > 0 to establish valid ranks in the graph)
-dummy_points = torch.zeros(1, 50, 2)
-dummy_labels = torch.zeros(1, 50, dtype=torch.int32)
-dummy_boxes  = torch.zeros(1, 50, 4)
-dummy_box_lbls = torch.zeros(1, 50, dtype=torch.int32)
-
-
-# Get encoder features (using random for tracing is fine if shapes match)
-# Or use the outputs from your encoder trace earlier
-""" f_dim = 256
-fpn0 = torch.randn(1, f_dim, 288, 288)   # Adjust based on your H/W (1008/16 approx)
-fpn1 = torch.randn(1, f_dim, 144, 144)
-fpn2 = torch.randn(1, f_dim, 72, 72)
-pos0 = torch.randn(1, f_dim, 288, 288)
-pos1 = torch.randn(1, f_dim, 144, 144)
-pos2 = torch.randn(1, f_dim, 72, 72)
-print("gborras")
-lang_feats = torch.randn(1, 1, f_dim)
-lang_mask = torch.zeros(1, 1, dtype=torch.bool) """
-
-inputs = (fpn0, fpn1, fpn2, pos0, pos1, pos2, lang_feats, lang_mask, 
-          dummy_points, dummy_labels, dummy_boxes, dummy_box_lbls)
-
-# Trace strictly
-traced_decoder = torch.jit.trace(decoder_wrapper, inputs, strict=False, check_trace=False)
-
-# --- 3. Conversion with Correct Types ---
-print("\n--- Converting to Core ML ---")
+print("\n--- Converting Decoder ---")
 
 # Dynamic Dimensions
 # We set start=1 to avoid "zero-dimension" crashes. 
@@ -455,7 +407,6 @@ decoder_wrapper = SAM3DecoderWrapper(full_model)
 decoder_wrapper.eval()
 
 # 2. Create Dummy Prompts with EXACT Target Shape
-# --- FIX: Use N_POINTS_FIXED here, not 50 ---
 dummy_points = torch.zeros(1, N_POINTS_FIXED, 2)
 dummy_labels = torch.zeros(1, N_POINTS_FIXED, dtype=torch.int32)
 dummy_boxes  = torch.zeros(1, N_BOXES_FIXED, 4)
@@ -464,18 +415,6 @@ dummy_box_lbls = torch.zeros(1, N_BOXES_FIXED, dtype=torch.int32)
 # Set at least one valid point/box to ensure graph validity
 dummy_points[0,0,:] = 50.0
 dummy_labels[0,0] = 1
-
-# Get encoder features (shapes must match encoder output)
-""" f_dim = 256
-TEXT_LEN = full_model.backbone.language_backbone.encoder.context_length
-fpn0 = torch.randn(1, f_dim, 288, 288)
-fpn1 = torch.randn(1, f_dim, 144, 144)
-fpn2 = torch.randn(1, f_dim, 72, 72)
-pos0 = torch.randn(1, f_dim, 288, 288)
-pos1 = torch.randn(1, f_dim, 144, 144)
-pos2 = torch.randn(1, f_dim, 72, 72)
-lang_feats = torch.randn(32, 1, f_dim)
-lang_mask = torch.zeros(1, 32, dtype=torch.bool) """
 
 inputs = (fpn0, fpn1, fpn2, pos0, pos1, pos2, lang_feats, lang_mask, 
           dummy_points, dummy_labels, dummy_boxes, dummy_box_lbls)
