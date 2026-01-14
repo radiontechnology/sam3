@@ -122,7 +122,7 @@ torch.utils.checkpoint.checkpoint_sequential = dummy_checkpoint
 
 
 # --- 1. CONFIGURATION ---
-sam3_root = "/home2/radion/users/gborras/work/derma/segmenter/sam3/sam3/"
+sam3_root = "./"
 checkpoint = f"{sam3_root}/assets/bpe_simple_vocab_16e6.txt.gz"
 H, W = 1008, 1008 
 
