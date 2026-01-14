@@ -1,7 +1,5 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates. All Rights Reserved
 
-# pyre-unsafe
-
 """Various utility models"""
 
 import copy
@@ -43,7 +41,7 @@ class DotProductScoring(torch.nn.Module):
         d_proj,
         prompt_mlp=None,
         clamp_logits=True,
-        clamp_max_val=12.0,
+        clamp_max_val=100.0,
     ):
         super().__init__()
         self.d_proj = d_proj
@@ -57,8 +55,9 @@ class DotProductScoring(torch.nn.Module):
             self.clamp_max_val = clamp_max_val
 
     def mean_pool_text(self, prompt, prompt_mask):
+        prompt_mask_clamp = prompt_mask.clamp(0.0, 1.0)
         # is_valid has shape (seq, bs, 1), where 1 is valid and 0 is padding
-        is_valid = (~prompt_mask).float().permute(1, 0)[..., None]
+        is_valid = (~prompt_mask_clamp.bool()).float().permute(1, 0)[..., None]
         # num_valid has shape (bs, 1)
         num_valid = torch.clamp(torch.sum(is_valid, dim=0), min=1.0)
         # mean pool over all the valid tokens -- pooled_prompt has shape (bs, proj_dim)
@@ -330,9 +329,9 @@ class SAM3Output(list):
             self.output = output
         else:
             self.output = []
-        assert isinstance(iter_mode, SAM3Output.IterMode), (
-            f"iter_mode shoulf be of enum type 'SAM3Output.IterMode'. Got {type(iter_mode)}"
-        )
+        assert isinstance(
+            iter_mode, SAM3Output.IterMode
+        ), f"iter_mode shoulf be of enum type 'SAM3Output.IterMode'. Got {type(iter_mode)}"
 
         self.iter_mode = iter_mode
         # We create a weak reference to self to be used in the lambda functions.
@@ -411,9 +410,9 @@ class SAM3Output(list):
         return SAM3Output._IterationMode(model_output=model_output, iter_mode=iter_mode)
 
     def append(self, item: list):
-        assert isinstance(item, list), (
-            f"Only list items are supported. Got {type(item)}"
-        )
+        assert isinstance(
+            item, list
+        ), f"Only list items are supported. Got {type(item)}"
         self.output.append(item)
 
     def __repr__(self):

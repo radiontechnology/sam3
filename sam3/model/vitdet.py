@@ -1,7 +1,5 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates. All Rights Reserved
 
-# pyre-unsafe
-
 """
 ViTDet backbone adapted from Detectron2.
 This module implements Vision Transformer (ViT) backbone for object detection.
@@ -67,7 +65,7 @@ def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor) -> torch.Ten
     return freqs_cis.view(*shape)
 
 
-def apply_rotary_enc(
+def apply_rotary_enc_old(
     xq: torch.Tensor,
     xk: torch.Tensor,
     freqs_cis: torch.Tensor,
@@ -90,6 +88,81 @@ def apply_rotary_enc(
         freqs_cis = freqs_cis.repeat(*([1] * (freqs_cis.ndim - 2)), r, 1)
     xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
     return xq_out.type_as(xq).to(xq.device), xk_out.type_as(xk).to(xk.device)
+
+
+def apply_rotary_enc(
+    xq: torch.Tensor,
+    xk: torch.Tensor,
+    freqs_cis: torch.Tensor,
+    repeat_freqs_k: bool = False,
+):
+    # 1. Prepare Data: Ensure float32 for Core ML stability
+    xq = xq.float()
+    xk = xk.float()
+
+    # 2. Reshape to isolate Real and Imaginary parts
+    # Shape: (..., Dim) -> (..., Dim/2, 2)
+    xq_reshaped = xq.reshape(*xq.shape[:-1], -1, 2)
+    
+    # Unbind: (..., Dim/2)
+    xq_r, xq_i = xq_reshaped.unbind(-1)
+
+    # Handle Keys (xk)
+    xk_r, xk_i = None, None
+    if xk.shape[-2] != 0:
+        xk_reshaped = xk.reshape(*xk.shape[:-1], -1, 2)
+        xk_r, xk_i = xk_reshaped.unbind(-1)
+
+    # 3. Handle Frequencies (freqs_cis)
+    # The input freqs_cis is likely Complex. We view it as Real.
+    # Shape: (Seq, Dim/2) [Complex] -> (Seq, Dim/2, 2) [Real]
+    if freqs_cis.is_complex():
+        freqs_cis = torch.view_as_real(freqs_cis)
+    
+    # Unbind Cosine and Sine
+    freqs_cos, freqs_sin = freqs_cis.unbind(-1)
+
+    # 4. Broadcast Frequencies
+    # We use xq_r as the template, which has shape (B, S, H, D/2).
+    # This matches the rank of the original complex tensor, so the helper works.
+    freqs_cos = reshape_for_broadcast(freqs_cos, xq_r)
+    freqs_sin = reshape_for_broadcast(freqs_sin, xq_r)
+
+    # 5. Apply Rotation (Complex Multiplication)
+    # Formula: (a + ib) * (c + id) = (ac - bd) + i(ad + bc)
+    # where q = a + ib,  freqs = c + id (cos + isin)
+    
+    # Calculate Real part
+    xq_out_r = xq_r * freqs_cos - xq_i * freqs_sin
+    # Calculate Imaginary part
+    xq_out_i = xq_r * freqs_sin + xq_i * freqs_cos
+
+    # Stack and Flatten back to original shape: (..., Dim/2, 2) -> (..., Dim)
+    xq_out = torch.stack([xq_out_r, xq_out_i], dim=-1).flatten(3)
+
+    # 6. Handle Keys Output
+    if xk_r is None:
+        return xq_out.type_as(xq), xk
+
+    # Handle repeat_freqs_k logic
+    if repeat_freqs_k:
+        # Original logic: r = xk_.shape[-2] // xq_.shape[-2]
+        # Our reshaped xk_r has the same seq_len dim at -2 as the original complex view
+        r = xk_r.shape[-2] // xq_r.shape[-2]
+        
+        # We must repeat the broadcasted freqs manually
+        if r > 1:
+             # freqs_cos is currently broadcasted to xq. We need to expand it for xk.
+             freqs_cos = freqs_cos.repeat(*([1] * (freqs_cos.ndim - 2)), r, 1)
+             freqs_sin = freqs_sin.repeat(*([1] * (freqs_sin.ndim - 2)), r, 1)
+
+    # Apply Rotation to Keys
+    xk_out_r = xk_r * freqs_cos - xk_i * freqs_sin
+    xk_out_i = xk_r * freqs_sin + xk_i * freqs_cos
+    
+    xk_out = torch.stack([xk_out_r, xk_out_i], dim=-1).flatten(3)
+
+    return xq_out.type_as(xq), xk_out.type_as(xk)
 
 
 def window_partition(x: Tensor, window_size: int) -> Tuple[Tensor, Tuple[int, int]]:
@@ -708,9 +781,9 @@ class ViT(nn.Module):
         self.retain_cls_token = retain_cls_token
         if self.retain_cls_token:
             assert pretrain_use_cls_token
-            assert len(window_block_indexes) == 0, (
-                "windowing not supported with cls token"
-            )
+            assert (
+                len(window_block_indexes) == 0
+            ), "windowing not supported with cls token"
 
             assert sum(self.rel_pos_blocks) == 0, "rel pos not supported with cls token"
 
