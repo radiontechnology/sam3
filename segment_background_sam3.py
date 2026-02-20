@@ -1,11 +1,13 @@
 import os
+import sys
 import cv2
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple
 from PIL import Image
-import time
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # --- SAM 3.0 IMPORTS ---
 from sam3.model_builder import build_sam3_image_model
@@ -216,10 +218,10 @@ class SAM3Segmentor:
         
         if output_base_path:
             # Define paths
-            all_masks_path = f"{output_base_path}_all_masks.png"
-            fg_path = f"{output_base_path}_foreground.png"
-            bg_path = f"{output_base_path}_background.jpg"
-            mask_path = f"{output_base_path}_mask.png"
+            all_masks_path = f"{output_base_path}all_masks.png"
+            fg_path = f"{output_base_path}foreground.png"
+            bg_path = f"{output_base_path}background.jpg"
+            mask_path = f"{output_base_path}mask.png"
             
             # Save Foreground
             cv2.imwrite(fg_path, fg)
