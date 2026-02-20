@@ -113,7 +113,7 @@ class SAM3Segmentor:
             # Move to device
             self.model.to(self.device)
             # 2. Create the processor
-            self.processor = Sam3Processor(self.model)
+            self.processor = Sam3Processor(self.model, device = self.device)
             print("Model loaded successfully.")
             
         except Exception as e:
