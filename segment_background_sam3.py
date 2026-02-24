@@ -23,11 +23,13 @@ class SAM3Segmentor:
     def __init__(
         self, 
         checkpoint_path: str = "", # SAM3 often auto-downloads, but keeping param just in case
+        bpe_path: str = "",
         device: Optional[str] = None
     ):
         """
         Initializes the SAM3Segmentor.
         """
+        self.bpe_path = bpe_path
         self.checkpoint_path = checkpoint_path
         
         if device is None:
@@ -37,6 +39,9 @@ class SAM3Segmentor:
             
         self.model = None
         self.processor = None
+
+        if self.model is None:
+            self.load_model()
         
         print(f"SAM3Segmentor initialized. Device: {self.device}")
 
@@ -107,8 +112,8 @@ class SAM3Segmentor:
         try:
             # 1. Build the Model
             # Note: SAM3 usually handles checkpoints internally or via config,
-            # but if your build_sam3_image_model accepts a path, pass self.checkpoint_path
-            self.model = build_sam3_image_model(self.checkpoint_path)
+            # but if your build_sam3_image_model accepts a path, pass self.bpe_path
+            self.model = build_sam3_image_model(bpe_path=self.bpe_path, checkpoint_path=self.checkpoint_path)
             
             # Move to device
             self.model.to(self.device)
@@ -269,8 +274,9 @@ if __name__ == "__main__":
     try:
         # Initialize
         sam3_root = "./sam3/"
-        checkpoint = f"{sam3_root}/assets/bpe_simple_vocab_16e6.txt.gz"
-        segmentor = SAM3Segmentor(checkpoint_path=checkpoint)
+        bpe_path = f"{sam3_root}/assets/bpe_simple_vocab_16e6.txt.gz"
+        checkpoint_path = f"{sam3_root}/assets/sam3.pt"
+        segmentor = SAM3Segmentor(bpe_path=bpe_path, checkpoint_path="checkpoint_path")
         
         
         # Run
