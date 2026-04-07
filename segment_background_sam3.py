@@ -33,7 +33,7 @@ class SAM3Segmentor:
         self.checkpoint_path = checkpoint_path
         
         if device is None:
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
         else:
             self.device = device
             
@@ -113,7 +113,11 @@ class SAM3Segmentor:
             # 1. Build the Model
             # Note: SAM3 usually handles checkpoints internally or via config,
             # but if your build_sam3_image_model accepts a path, pass self.bpe_path
-            self.model = build_sam3_image_model(bpe_path=self.bpe_path, checkpoint_path=self.checkpoint_path)
+            self.model = build_sam3_image_model(
+                bpe_path=self.bpe_path,
+                checkpoint_path=self.checkpoint_path,
+                device=self.device
+            )
             
             # Move to device
             self.model.to(self.device)
@@ -276,7 +280,7 @@ if __name__ == "__main__":
         sam3_root = "./sam3/"
         bpe_path = f"{sam3_root}/assets/bpe_simple_vocab_16e6.txt.gz"
         checkpoint_path = f"{sam3_root}/assets/sam3.pt"
-        segmentor = SAM3Segmentor(bpe_path=bpe_path, checkpoint_path="checkpoint_path")
+        segmentor = SAM3Segmentor(bpe_path=bpe_path, checkpoint_path=checkpoint_path)
         
         
         # Run
