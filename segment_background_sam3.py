@@ -170,7 +170,7 @@ class SAM3Segmentor:
         
         return best_mask
 
-    def segment_image(self, input_path: str, output_base_path: str, text_prompt: str = "generic object", multiple_maks:bool = False, save_debug: bool = False):
+    def segment_image(self, input_path: str, output_base_path: str, text_prompt: str = "generic object", multiple_maks:bool = True, save_debug: bool = False):
         """
         Runs the segmentation process on a single image.
         
