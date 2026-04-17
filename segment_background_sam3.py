@@ -12,6 +12,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # --- SAM 3.0 IMPORTS ---
 from sam3.model_builder import build_sam3_image_model
 from sam3.model.sam3_image_processor import Sam3Processor
+from sam3_inference import SAM3Inferencer
 # -----------------------
 
 class SAM3Segmentor:
@@ -39,6 +40,7 @@ class SAM3Segmentor:
             
         self.model = None
         self.processor = None
+        self.inferencer = None
 
         if self.model is None:
             self.load_model()
@@ -121,8 +123,10 @@ class SAM3Segmentor:
             
             # Move to device
             self.model.to(self.device)
+            self.model.eval()
             # 2. Create the processor
-            self.processor = Sam3Processor(self.model, device = self.device)
+            #self.processor = Sam3Processor(self.model, device = self.device)
+            self.inferencer = SAM3Inferencer(self.model, device=self.device)
             print("Model loaded successfully.")
             
         except Exception as e:
@@ -194,30 +198,24 @@ class SAM3Segmentor:
         H, W, _ = image_bgr.shape
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
-        # 2. Convert to PIL for SAM 3 Input
-        pil_image = Image.fromarray(image_rgb)
-
-        # --- Run SAM 3 Processor ---
-        print("Setting image...")
-        inference_state = self.processor.set_image(pil_image)
+        print(f"Running prediction with prompt: '{text_prompt}' using SAM3Inferencer...")
+        output = self.inferencer.infer(image_bgr, [text_prompt], threshold=0.5, orig_size=(H, W))
         
-        print(f"Running prediction with prompt: '{text_prompt}'...")
-        output = self.processor.set_text_prompt(state=inference_state, prompt=text_prompt)
-
-        # Extract results
-        # SAM 3 returns Tensors. We need to move them to CPU and convert to Numpy.
+        if len(output["scores"]) == 0:
+            print("No masks returned.")
+            return
+        
         masks_tensor = output["masks"]
         scores_tensor = output["scores"]
         
         # Convert to numpy
-        masks = masks_tensor.cpu().numpy() # Shape usually (Batch, N, H, W)
+        masks = masks_tensor.cpu().numpy()
         scores = scores_tensor.cpu().numpy()
-        
-        if masks.size == 0:
-            print("No masks returned.")
-            return
-        
         print("Scores found: ", scores)
+
+        # Clean up GPU memory
+        del output, masks_tensor, scores_tensor
+        torch.cuda.empty_cache()
 
         # --- Post-process to get the best foreground mask ---
         best_mask = self._post_process_mask(masks, scores, H, W, multiple_maks)
