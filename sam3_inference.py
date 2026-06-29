@@ -119,8 +119,12 @@ class SAM3Inferencer:
         geo_prompt, img_ids, text_ids = self.prepare_constant_inputs(total_queries, image_batch_size, prompt_batch_size)
         image_batch = self.preprocess_images(image_bgr, image_batch_size)
         backbone_out = self.run_image_encoder(image_batch)
-        text_out = self.run_text_encoder(prompts)
         
+        a = time.time()
+        text_out = self.run_text_encoder(prompts)
+        b = time.time()
+        print("TIme for Sam3 text inference", b-a)
+
         # Use a fresh dictionary to avoid mutating cached model state internally
         combined_out = dict(backbone_out)
         combined_out.update(text_out)
