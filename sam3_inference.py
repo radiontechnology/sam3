@@ -57,7 +57,7 @@ class SAM3Inferencer:
         )
 
         img_ids = torch.arange(image_batch_size, device=self.device).repeat_interleave(prompt_batch_size)
-        text_ids = torch.arange(total_queries, device=self.device)
+        text_ids = torch.arange(prompt_batch_size, device=self.device).repeat(image_batch_size)
         return batched_prompt, img_ids, text_ids
 
     def run_image_encoder(self, image_batch):
@@ -69,10 +69,71 @@ class SAM3Inferencer:
                 s2_out["backbone_fpn"][1] = self.model.inst_interactive_predictor.model.sam_mask_decoder.conv_s1(s2_out["backbone_fpn"][1])
             return backbone_out
 
-    def run_text_encoder(self, prompts):
-        with torch.no_grad():
-            text_outputs = self.model.backbone.forward_text(prompts, device=self.device)
-        return text_outputs
+    def run_text_encoder(self, prompts, cache_embeddings=True, cache_path="./text_prompts_embeddings"):
+        start_time = time.perf_counter()
+        if not cache_embeddings:
+            with torch.no_grad():
+                result = self.model.backbone.forward_text(prompts, device=self.device)
+            end_time = time.perf_counter()
+            print(f"Time for run_text_encoder (uncached): {end_time - start_time:.4f}s")
+            return result
+
+        os.makedirs(cache_path, exist_ok=True)
+
+        all_outputs = {}
+        prompts_to_infer = []
+        original_indices = []
+        
+        cached_prompts_found = 0
+
+        for i, prompt in enumerate(prompts):
+            sanitized_prompt = "".join(c for c in prompt if c.isalnum() or c in (' ', '_')).rstrip().replace(' ', '_')
+            filepath = os.path.join(cache_path, f"{sanitized_prompt}.pt")
+
+            if os.path.exists(filepath):
+                load_start = time.perf_counter()
+                cached_data = torch.load(filepath, map_location=self.device)
+                torch.cuda.synchronize() # Ensure loading is complete
+                load_end = time.perf_counter()
+                print(f"  - Time to load cached prompt '{prompt}': {load_end - load_start:.4f}s")
+                all_outputs[i] = cached_data
+                cached_prompts_found += 1
+            else:
+                prompts_to_infer.append(prompt)
+                original_indices.append(i)
+
+        if prompts_to_infer:
+            infer_start = time.perf_counter()
+            with torch.no_grad():
+                new_text_outputs = self.model.backbone.forward_text(prompts_to_infer, device=self.device)
+            torch.cuda.synchronize() # Ensure inference is complete
+            infer_end = time.perf_counter()
+            print(f"  - Time for new text inference ({len(prompts_to_infer)} prompts): {infer_end - infer_start:.4f}s")
+
+            for i, original_idx in enumerate(original_indices):
+                prompt = prompts_to_infer[i]
+                sanitized_prompt = "".join(c for c in prompt if c.isalnum() or c in (' ', '_')).rstrip().replace(' ', '_')
+                filepath = os.path.join(cache_path, f"{sanitized_prompt}.pt")
+
+                single_prompt_output = {
+                    'language_features': new_text_outputs['language_features'][:, i:i+1, :],
+                    'language_mask': new_text_outputs['language_mask'][i:i+1, :],
+                    'language_embeds': new_text_outputs['language_embeds'][:, i:i+1, :]
+                }
+                torch.save(single_prompt_output, filepath)
+                all_outputs[original_idx] = single_prompt_output
+
+        sorted_outputs = [all_outputs[i] for i in sorted(all_outputs.keys())]
+
+        result = {
+            'language_features': torch.cat([o['language_features'] for o in sorted_outputs], dim=1),
+            'language_mask': torch.cat([o['language_mask'] for o in sorted_outputs], dim=0),
+            'language_embeds': torch.cat([o['language_embeds'] for o in sorted_outputs], dim=1),
+        }
+        end_time = time.perf_counter()
+        total_time = end_time - start_time
+        print(f"Time for run_text_encoder (cached path): {total_time:.4f}s ({cached_prompts_found} from cache, {len(prompts_to_infer)} new)")
+        return result
 
     def run_decoder(self, backbone_out, geometric_prompt, img_ids, text_ids):
         find_input = FindStage(
@@ -117,14 +178,12 @@ class SAM3Inferencer:
         total_queries = image_batch_size * prompt_batch_size
 
         geo_prompt, img_ids, text_ids = self.prepare_constant_inputs(total_queries, image_batch_size, prompt_batch_size)
+
+        embeddings_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "./text_prompts_embeddings")
+        text_out = self.run_text_encoder(prompts, cache_embeddings=True, cache_path=embeddings_folder)
         image_batch = self.preprocess_images(image_bgr, image_batch_size)
         backbone_out = self.run_image_encoder(image_batch)
         
-        a = time.time()
-        text_out = self.run_text_encoder(prompts)
-        b = time.time()
-        print("TIme for Sam3 text inference", b-a)
-
         # Use a fresh dictionary to avoid mutating cached model state internally
         combined_out = dict(backbone_out)
         combined_out.update(text_out)
