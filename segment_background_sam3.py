@@ -174,7 +174,7 @@ class SAM3Segmentor:
         
         return best_mask
 
-    def segment_image(self, input_path: str, output_base_path: str, text_prompt: str = "generic object", multiple_maks:bool = True, save_debug: bool = False):
+    def segment_image(self, input_path: str, output_base_path: str, text_prompt: str = "generic object", multiple_masks:bool = True, save_debug: bool = False):
         """
         Runs the segmentation process on a single image.
         
@@ -218,7 +218,7 @@ class SAM3Segmentor:
         torch.cuda.empty_cache()
 
         # --- Post-process to get the best foreground mask ---
-        best_mask = self._post_process_mask(masks, scores, H, W, multiple_maks)
+        best_mask = self._post_process_mask(masks, scores, H, W, multiple_masks)
 
         # Create FG/BG images
         fg, bg = self._create_masked_images(image_bgr, best_mask)
@@ -287,7 +287,7 @@ if __name__ == "__main__":
             output_base_path=OUTPUT_BASE,
             text_prompt=TEXT_PROMPT, # Pass the text prompt here
             save_debug=True,
-            multiple_maks=True
+            multiple_masks=True
         )
         
     except Exception as e:
