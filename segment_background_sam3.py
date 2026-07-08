@@ -174,29 +174,36 @@ class SAM3Segmentor:
         
         return best_mask
 
-    def segment_image(self, input_path: str, output_base_path: str, text_prompt: str = "generic object", multiple_maks:bool = True, save_debug: bool = False):
+    def segment_image(self, input_path: str = None, image_bgr: np.ndarray = None, output_base_path: str = None, text_prompt: str = "generic object", multiple_maks:bool = True, save_debug: bool = False):
         """
         Runs the segmentation process on a single image.
         
         Args:
-            input_path (str): Path to image.
-            output_base_path (str): Base path for saving.
+            input_path (str, optional): Path to image.
+            image_bgr (np.ndarray, optional): The input image in BGR format.
+            output_base_path (str, optional): Base path for saving.
             text_prompt (str): SAM 3 is text-based. Provide a description of what to segment.
             save_debug (bool): Save intermediate visualizations.
         """
         if self.model is None:
             self.load_model()
 
-        print(f"\n--- Processing: {os.path.basename(input_path)} ---")
-
-        # 1. Load Image with OpenCV (for final processing/saving)
-        image_bgr = cv2.imread(input_path)
         if image_bgr is None:
-            print(f"Error: cannot read image {input_path}")
-            return
+            if input_path is None:
+                raise ValueError("Either input_path or image_bgr must be provided.")
+            print(f"\n--- Processing: {os.path.basename(input_path)} ---")
+            # 1. Load Image with OpenCV (for final processing/saving)
+            image_bgr = cv2.imread(input_path)
+            if image_bgr is None:
+                print(f"Error: cannot read image {input_path}")
+                return
+        else:
+            if input_path:
+                 print(f"\n--- Processing: {os.path.basename(input_path)} from memory ---")
+            else:
+                 print(f"\n--- Processing image from memory ---")
 
         H, W, _ = image_bgr.shape
-        image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
         print(f"Running prediction with prompt: '{text_prompt}' using SAM3Inferencer...")
         output = self.inferencer.infer(image_bgr, [text_prompt], threshold=0.5, orig_size=(H, W))
@@ -237,6 +244,7 @@ class SAM3Segmentor:
             print(f"- Foreground: {os.path.basename(fg_path)}")
             
             if save_debug:
+                image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
                 self._show_masks_on_image(image_rgb, masks, all_masks_path)
                 cv2.imwrite(bg_path, bg)
                 cv2.imwrite(mask_path, (best_mask.astype(np.uint8) * 255))
