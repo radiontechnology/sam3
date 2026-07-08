@@ -217,7 +217,7 @@ class SAM3Inferencer:
         return final_results
 
 def main():
-    INPUT_PATH = "/home2/radion/common/projects/fotofinder/atbm_bodyscan_stitching/dataset/1_development/2_curated/001033/201703/scanF_img2_FotoFinderUniverse_2803171746_FFI_000002.jpeg"
+    INPUT_PATH = "./input_pics/glasses.png"
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     
     sam3_root = os.path.dirname(os.path.abspath(__file__))
