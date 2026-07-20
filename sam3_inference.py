@@ -16,6 +16,7 @@ class SAM3Inferencer:
         self.transform = v2.Compose([
             v2.ToDtype(torch.uint8, scale=True),
             v2.Resize(size=(1008, 1008)),
+            v2.GaussianBlur(kernel_size=(11, 11)),
             v2.ToDtype(torch.float32, scale=True),
             v2.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
         ])
@@ -191,7 +192,7 @@ class SAM3Inferencer:
         raw_outputs = self.run_decoder(combined_out, geo_prompt, img_ids, text_ids)
         
         final_results = self.postprocess(raw_outputs, threshold, img_size=(1008, 1008))
-        
+
         # Explicitly move tensors to CPU to free VRAM for the caller
         for k, v in final_results.items():
             if isinstance(v, torch.Tensor):
