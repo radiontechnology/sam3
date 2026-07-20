@@ -16,7 +16,6 @@ class SAM3Inferencer:
         self.transform = v2.Compose([
             v2.ToDtype(torch.uint8, scale=True),
             v2.Resize(size=(1008, 1008)),
-            v2.GaussianBlur(kernel_size=(11, 11)),
             v2.ToDtype(torch.float32, scale=True),
             v2.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
         ])
