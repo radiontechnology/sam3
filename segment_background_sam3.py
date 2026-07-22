@@ -116,9 +116,9 @@ class SAM3Segmentor:
             # Note: SAM3 usually handles checkpoints internally or via config,
             # but if your build_sam3_image_model accepts a path, pass self.bpe_path
             self.model = build_sam3_image_model(
+                self.device,
                 bpe_path=self.bpe_path,
                 checkpoint_path=self.checkpoint_path,
-                device=self.device
             )
             
             # Move to device
@@ -222,7 +222,8 @@ class SAM3Segmentor:
 
         # Clean up GPU memory
         del output, masks_tensor, scores_tensor
-        torch.cuda.empty_cache()
+        if self.device!="cpu":
+            torch.cuda.empty_cache()
 
         # --- Post-process to get the best foreground mask ---
         best_mask = self._post_process_mask(masks, scores, H, W, multiple_masks)

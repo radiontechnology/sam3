@@ -93,7 +93,8 @@ class SAM3Inferencer:
             if os.path.exists(filepath):
                 load_start = time.perf_counter()
                 cached_data = torch.load(filepath, map_location=self.device)
-                torch.cuda.synchronize() # Ensure loading is complete
+                if self.device!="cpu":
+                    torch.cuda.synchronize() # Ensure loading is complete
                 load_end = time.perf_counter()
                 print(f"  - Time to load cached prompt '{prompt}': {load_end - load_start:.4f}s")
                 all_outputs[i] = cached_data
@@ -106,7 +107,8 @@ class SAM3Inferencer:
             infer_start = time.perf_counter()
             with torch.no_grad():
                 new_text_outputs = self.model.backbone.forward_text(prompts_to_infer, device=self.device)
-            torch.cuda.synchronize() # Ensure inference is complete
+            if self.device!="cpu":
+                torch.cuda.synchronize() # Ensure inference is complete
             infer_end = time.perf_counter()
             print(f"  - Time for new text inference ({len(prompts_to_infer)} prompts): {infer_end - infer_start:.4f}s")
 
