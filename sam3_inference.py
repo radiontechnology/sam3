@@ -1,7 +1,9 @@
 import torch
 import time
 import cv2
+import hashlib
 import os
+import tempfile
 from PIL import Image
 from torchvision.transforms import v2
 from sam3.model_builder import build_sam3_image_model
@@ -11,14 +13,41 @@ from sam3.model.sam3_image import Prompt
 
 class SAM3Inferencer:
     def __init__(self, model, device="cuda"):
-        self.model = model
         self.device = device
+        self.model = model.to(self.device)
         self.transform = v2.Compose([
             v2.ToDtype(torch.uint8, scale=True),
             v2.Resize(size=(1008, 1008)),
             v2.ToDtype(torch.float32, scale=True),
             v2.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
         ])
+
+    @staticmethod
+    def _prompt_cache_path(cache_path, prompt):
+        """Return a collision-resistant, path-safe cache filename."""
+        prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        return os.path.join(cache_path, f"{prompt_hash}.pt")
+
+    @staticmethod
+    def _atomic_torch_save(data, filepath):
+        """Write a cache entry without exposing a partially written file."""
+        file_descriptor, temporary_path = tempfile.mkstemp(
+            dir=os.path.dirname(filepath),
+            prefix=f".{os.path.basename(filepath)}.",
+            suffix=".tmp",
+        )
+        try:
+            with os.fdopen(file_descriptor, "wb") as temporary_file:
+                torch.save(data, temporary_file)
+                temporary_file.flush()
+                os.fsync(temporary_file.fileno())
+            os.replace(temporary_path, filepath)
+        except Exception:
+            try:
+                os.unlink(temporary_path)
+            except FileNotFoundError:
+                pass
+            raise
 
     def preprocess_images(self, image_bgr, batch_size):
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
@@ -120,7 +149,7 @@ class SAM3Inferencer:
                     'language_mask': new_text_outputs['language_mask'][i:i+1, :],
                     'language_embeds': new_text_outputs['language_embeds'][:, i:i+1, :]
                 }
-                torch.save(single_prompt_output, filepath)
+                self._atomic_torch_save(single_prompt_output, filepath)
                 all_outputs[original_idx] = single_prompt_output
 
         sorted_outputs = [all_outputs[i] for i in sorted(all_outputs.keys())]

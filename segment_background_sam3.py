@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+import threading
 from typing import Optional, Tuple
 from PIL import Image
 
@@ -14,6 +15,8 @@ from sam3.model_builder import build_sam3_image_model
 from sam3.model.sam3_image_processor import Sam3Processor
 from sam3_inference import SAM3Inferencer
 # -----------------------
+
+sam3_inference_lock = threading.Lock()
 
 class SAM3Segmentor:
     """
@@ -133,7 +136,7 @@ class SAM3Segmentor:
             print(f"Failed to load model: {e}")
             raise e
 
-    def _post_process_mask(self, masks: np.ndarray, scores: np.ndarray, H: int, W: int, multiple_masks: bool = True) -> np.ndarray:
+    def _post_process_mask(self, masks: np.ndarray, scores: np.ndarray, H: int, W: int, multiple_masks: bool = True, threshold: float = 0.5) -> np.ndarray:
         """
         Selects the best mask and cleans it up using morphology.
         Handles input shapes (1, N, H, W) and (N, 1, H, W).
@@ -155,9 +158,9 @@ class SAM3Segmentor:
             elif scores.shape[1] == 1:
                 scores = scores.squeeze(1)
 
-        # 2. Logic for multiple masks (Union of scores > 0.5)
+        # 2. Logic for multiple masks (Union of scores > threshold)
         if multiple_masks:
-            valid_indices = scores > 0.5
+            valid_indices = scores > threshold
             
             if np.any(valid_indices):
                 # Union of all valid masks
@@ -167,8 +170,8 @@ class SAM3Segmentor:
 
         # 3. Fallback: Select single best mask
         best_idx = np.argmax(scores)
-        # If the best score is less than 0.5, return an empty mask
-        if scores[best_idx] < 0.5:
+        # If the best score is less than threshold, return an empty mask
+        if scores[best_idx] < threshold:
             return np.zeros((H, W), dtype=bool)
         best_mask = masks[best_idx]
         
@@ -206,7 +209,13 @@ class SAM3Segmentor:
         H, W, _ = image_bgr.shape
 
         print(f"Running prediction with prompt: '{text_prompt}' using SAM3Inferencer...")
-        output = self.inferencer.infer(image_bgr, [text_prompt], threshold=0.5, orig_size=(H, W))
+        with sam3_inference_lock:
+            output = self.inferencer.infer(
+                image_bgr,
+                [text_prompt],
+                threshold=0.5,
+                orig_size=(H, W),
+            )
         
         if len(output["scores"]) == 0:
             print("No masks returned.")
