@@ -195,9 +195,8 @@ def iou_loss(
     return loss.sum() / num_boxes
 
 
-@torch.jit.script
 def _contrastive_align(logits, positive_map):
-    positive_logits = -logits.masked_fill(~positive_map, 0)
+    ositive_logits = -logits.masked_fill(~positive_map, 0)
     negative_logits = logits  # .masked_fill(positive_map, -1000000)
 
     boxes_with_pos = positive_map.any(2)

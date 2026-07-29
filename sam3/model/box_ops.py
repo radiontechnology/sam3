@@ -144,7 +144,6 @@ def generalized_box_iou(boxes1, boxes2):
     return iou - (area - union) / area
 
 
-@torch.jit.script
 def fast_diag_generalized_box_iou(boxes1, boxes2):
     assert len(boxes1) == len(boxes2)
     box1_xy = boxes1[:, 2:]
@@ -171,7 +170,6 @@ def fast_diag_generalized_box_iou(boxes1, boxes2):
     return iou - (tot_area - union) / tot_area
 
 
-@torch.jit.script
 def fast_diag_box_iou(boxes1, boxes2):
     assert len(boxes1) == len(boxes2)
     box1_xy = boxes1[:, 2:]

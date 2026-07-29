@@ -168,7 +168,6 @@ def _keypoints_to_heatmap(
     return heatmaps, valid
 
 
-@torch.jit.script_if_tracing
 def heatmaps_to_keypoints(maps: torch.Tensor, rois: torch.Tensor) -> torch.Tensor:
     """
     Extract predicted keypoint locations from heatmaps.
